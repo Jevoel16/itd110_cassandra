@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Philippine Electricity Access</title>
+    <title>Philippine Water Access</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <header>
         <div class="header-content">
-            <div class="sdg-badge">SDG 7</div>
+            <div class="sdg-badge">SDG 6</div>
             <div>
-                <h1>Philippine Electricity Access</h1>
-                <p class="subtitle">Sustainable Development Goal 7 — Affordable and Clean Energy (Indicator 7.1.1)</p>
+                <h1>Philippine Water Access</h1>
+                <p class="subtitle">Sustainable Development Goal 6 — Clean Water and Sanitation (Indicator 6.1.1.p1)</p>
             </div>
         </div>
     </header>
@@ -22,7 +22,7 @@
         <!-- Import Section -->
         <section class="section">
             <h2>Import Dataset</h2>
-            <p class="section-desc">Upload the CSV file containing proportion of population with access to electricity.</p>
+            <p class="section-desc">Upload the CSV file containing the proportion of families with access to basic drinking water services.</p>
             <div class="import-row">
                 <input type="file" id="csv-file" accept=".csv">
                 <button id="import-btn" class="btn btn-import">Import CSV</button>
@@ -34,20 +34,20 @@
         <section class="section">
             <h2 id="form-title">Add Data Point</h2>
             <form id="data-form">
-                <input type="hidden" id="edit-original-region">
+                <input type="hidden" id="edit-original-geolocation">
                 <input type="hidden" id="edit-original-year">
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="region">Region</label>
-                        <input type="text" id="region" placeholder="e.g. PHILIPPINES" required>
+                        <label for="geolocation">Geolocation</label>
+                        <input type="text" id="geolocation" placeholder="e.g. PHILIPPINES" required>
                     </div>
                     <div class="form-group">
                         <label for="year">Year</label>
                         <input type="number" id="year" min="2000" max="2030" placeholder="e.g. 2023" required>
                     </div>
                     <div class="form-group">
-                        <label for="percentage">Access (%)</label>
-                        <input type="number" id="percentage" step="0.1" min="0" max="120" placeholder="e.g. 92.7" required>
+                        <label for="access-percentage">Access (%)</label>
+                        <input type="number" id="access-percentage" step="0.1" min="0" max="100" placeholder="e.g. 92.7" required>
                     </div>
                 </div>
                 <div class="form-actions">
@@ -59,11 +59,11 @@
 
         <!-- Data Table -->
         <section class="section">
-            <h2>Electricity Access Data</h2>
+            <h2>Water Access Data</h2>
             <div class="filter-row">
-                <label for="region-select">Filter by Region</label>
-                <select id="region-select">
-                    <option value="">All Regions</option>
+                <label for="geolocation-select">Filter by Geolocation</label>
+                <select id="geolocation-select">
+                    <option value="">All Geolocations</option>
                 </select>
             </div>
 
@@ -71,7 +71,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Region</th>
+                            <th>Geolocation</th>
                             <th>Year</th>
                             <th>Access (%)</th>
                             <th>Actions</th>
@@ -80,11 +80,18 @@
                     <tbody id="data-tbody"></tbody>
                 </table>
             </div>
-            <p id="no-data" class="no-data hidden">No data found. Import a dataset or add a data point.</p>
+            <p id="no-data" class="no-data hidden">No data found. Import the SDG 6 dataset or add a data point.</p>
+
+            <!-- Pagination Controls -->
+            <div class="pagination-controls">
+                <button id="prev-btn" class="btn btn-secondary" disabled>← Previous</button>
+                <span id="page-info">Page 1</span>
+                <button id="next-btn" class="btn btn-secondary" disabled>Next →</button>
+            </div>
         </section>
 
         <footer>
-            <p>Data source: Philippine Statistics Authority — SDG Indicator 7.1.1</p>
+            <p>Data source: Philippine Indicators — SDG Indicator 6.1.1.p1</p>
             <p>Powered by Apache Cassandra</p>
         </footer>
     </div>

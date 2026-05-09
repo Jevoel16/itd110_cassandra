@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3000/api/electricity';
+const API_URL = 'http://localhost:3000/api/water';
 
 const csvFileInput = document.getElementById('csv-file');
 const importBtn = document.getElementById('import-btn');
@@ -7,16 +7,24 @@ const dataForm = document.getElementById('data-form');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const cancelBtn = document.getElementById('cancel-btn');
-const regionInput = document.getElementById('region');
+const geolocationInput = document.getElementById('geolocation');
 const yearInput = document.getElementById('year');
-const percentageInput = document.getElementById('percentage');
-const editOriginalRegion = document.getElementById('edit-original-region');
+const accessPercentageInput = document.getElementById('access-percentage');
+const editOriginalGeolocation = document.getElementById('edit-original-geolocation');
 const editOriginalYear = document.getElementById('edit-original-year');
-const regionSelect = document.getElementById('region-select');
+const geolocationSelect = document.getElementById('geolocation-select');
 const dataTbody = document.getElementById('data-tbody');
 const noData = document.getElementById('no-data');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+const pageInfo = document.getElementById('page-info');
 
 let isEditing = false;
+
+// Pagination state
+let paginationStack = [];
+let currentPage = 0;
+let currentGeolocation = '';
 
 // ---- Import ----
 importBtn.addEventListener('click', async () => {
@@ -40,6 +48,7 @@ importBtn.addEventListener('click', async () => {
         if (!res.ok) throw new Error(data.message);
         showImportStatus(data.message, false);
         loadRegions();
+        resetPagination();
         loadData();
     } catch (err) {
         showImportStatus(err.message, true);
@@ -58,49 +67,102 @@ function showImportStatus(msg, isError) {
 // ---- Region dropdown ----
 async function loadRegions() {
     try {
-        const res = await fetch(`${API_URL}/regions`);
-        const regions = await res.json();
-        regionSelect.innerHTML = '<option value="">-- All Regions --</option>';
-        regions.forEach((r) => {
+        const res = await fetch(`${API_URL}/geolocations`);
+        const geolocations = await res.json();
+        geolocationSelect.innerHTML = '<option value="">All Geolocations</option>';
+        geolocations.forEach((r) => {
             const opt = document.createElement('option');
             opt.value = r;
             opt.textContent = r;
-            regionSelect.appendChild(opt);
+            geolocationSelect.appendChild(opt);
         });
     } catch {
         // ignore
     }
 }
 
-regionSelect.addEventListener('change', loadData);
+geolocationSelect.addEventListener('change', () => {
+    resetPagination();
+    loadData();
+});
 
-// ---- Load table data ----
+// ---- Pagination Management ----
+function resetPagination() {
+    paginationStack = [null]; // Start with null for first page
+    currentPage = 0;
+    updatePaginationButtons();
+}
+
+function updatePaginationButtons() {
+    prevBtn.disabled = currentPage === 0;
+    pageInfo.textContent = `Page ${currentPage + 1}`;
+}
+
+prevBtn.addEventListener('click', () => {
+    if (currentPage > 0) {
+        currentPage--;
+        loadData();
+    }
+});
+
+nextBtn.addEventListener('click', () => {
+    currentPage++;
+    if (currentPage >= paginationStack.length) {
+        paginationStack.push(null); // Placeholder for new page
+    }
+    loadData();
+});
+
+// ---- Load table data with pagination ----
 async function loadData() {
-    const selected = regionSelect.value;
+    const selected = geolocationSelect.value;
+    currentGeolocation = selected;
+    
     try {
-        let rows;
+        let endpoint;
+        let allRows = [];
+
         if (selected) {
-            const res = await fetch(`${API_URL}/${encodeURIComponent(selected)}`);
-            rows = await res.json();
-        } else {
-            // Load all regions' data
-            const regRes = await fetch(`${API_URL}/regions`);
-            const regions = await regRes.json();
-            rows = [];
-            for (const r of regions) {
-                const res = await fetch(`${API_URL}/${encodeURIComponent(r)}`);
-                const data = await res.json();
-                rows.push(...data);
+            // Fetch paginated data for selected geolocation
+            const pagingState = paginationStack[currentPage];
+            const params = new URLSearchParams({ limit: 10 });
+            if (pagingState) params.append('pagingState', pagingState);
+            
+            const res = await fetch(`${API_URL}/${encodeURIComponent(selected)}?${params}`);
+            const response = await res.json();
+            
+            if (response.pagingState) {
+                paginationStack[currentPage + 1] = response.pagingState;
             }
+            
+            nextBtn.disabled = !response.hasMore;
+            allRows = response.data || response;
+        } else {
+            // Fetch all data with pagination
+            const pagingState = paginationStack[currentPage];
+            const params = new URLSearchParams({ limit: 10 });
+            if (pagingState) params.append('pagingState', pagingState);
+            
+            const res = await fetch(`${API_URL}/all?${params}`);
+            const response = await res.json();
+            
+            if (response.pagingState) {
+                paginationStack[currentPage + 1] = response.pagingState;
+            }
+            
+            nextBtn.disabled = !response.hasMore;
+            allRows = response.data || response;
         }
 
-        renderTable(rows);
-    } catch {
+        renderTable(allRows, selected === '');
+        updatePaginationButtons();
+    } catch (err) {
+        console.error(err);
         renderTable([]);
     }
 }
 
-function renderTable(rows) {
+function renderTable(rows, sortByGeolocation = false) {
     dataTbody.innerHTML = '';
 
     if (rows.length === 0) {
@@ -110,18 +172,23 @@ function renderTable(rows) {
 
     noData.classList.add('hidden');
 
-    // Sort: region asc, year desc
-    rows.sort((a, b) => a.region.localeCompare(b.region) || b.year - a.year);
+    // Sort: if showing all data, sort by geolocation then year desc; otherwise just year desc
+    if (sortByGeolocation) {
+        rows.sort((a, b) => a.geolocation.localeCompare(b.geolocation) || b.year - a.year);
+    } else {
+        rows.sort((a, b) => b.year - a.year);
+    }
 
     rows.forEach((r) => {
+        const accessPercentage = Number(r.access_percentage ?? r.percentage ?? 0);
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${escapeHtml(r.region)}</td>
+            <td>${escapeHtml(r.geolocation)}</td>
             <td>${r.year}</td>
-            <td>${r.percentage.toFixed(1)}</td>
+            <td>${Number.isFinite(accessPercentage) ? accessPercentage.toFixed(1) : ''}</td>
             <td>
-                <button class="btn-edit" onclick="editRow('${escapeAttr(r.region)}', ${r.year}, ${r.percentage})">Edit</button>
-                <button class="btn-delete" onclick="deleteRow('${escapeAttr(r.region)}', ${r.year})">Delete</button>
+                <button class="btn-edit" onclick="editRow('${escapeAttr(r.geolocation)}', ${r.year}, ${accessPercentage})">Edit</button>
+                <button class="btn-delete" onclick="deleteRow('${escapeAttr(r.geolocation)}', ${r.year})">Delete</button>
             </td>
         `;
         dataTbody.appendChild(tr);
@@ -142,39 +209,39 @@ function escapeAttr(text) {
 dataForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const region = regionInput.value.trim();
+    const geolocation = geolocationInput.value.trim();
     const year = parseInt(yearInput.value);
-    const percentage = parseFloat(percentageInput.value);
+    const accessPercentage = parseFloat(accessPercentageInput.value);
 
     try {
         if (isEditing) {
-            const origRegion = editOriginalRegion.value;
+            const origGeolocation = editOriginalGeolocation.value;
             const origYear = parseInt(editOriginalYear.value);
 
-            // If region or year changed, delete old + create new (primary key changed)
-            if (origRegion !== region || origYear !== year) {
-                await fetch(`${API_URL}/${encodeURIComponent(origRegion)}/${origYear}`, { method: 'DELETE' });
+            if (origGeolocation !== geolocation || origYear !== year) {
+                await fetch(`${API_URL}/${encodeURIComponent(origGeolocation)}/${origYear}`, { method: 'DELETE' });
                 await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ region, year, percentage }),
+                    body: JSON.stringify({ geolocation, year, access_percentage: accessPercentage }),
                 });
             } else {
-                await fetch(`${API_URL}/${encodeURIComponent(region)}/${year}`, {
+                await fetch(`${API_URL}/${encodeURIComponent(geolocation)}/${year}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ percentage }),
+                    body: JSON.stringify({ access_percentage: accessPercentage }),
                 });
             }
         } else {
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ region, year, percentage }),
+                body: JSON.stringify({ geolocation, year, access_percentage: accessPercentage }),
             });
         }
 
         resetForm();
+        resetPagination();
         loadRegions();
         loadData();
     } catch (err) {
@@ -182,25 +249,26 @@ dataForm.addEventListener('submit', async (e) => {
     }
 });
 
-function editRow(region, year, percentage) {
+function editRow(geolocation, year, accessPercentage) {
     isEditing = true;
     formTitle.textContent = 'Edit Data Point';
     submitBtn.textContent = 'Update';
     cancelBtn.classList.remove('hidden');
 
-    editOriginalRegion.value = region;
+    editOriginalGeolocation.value = geolocation;
     editOriginalYear.value = year;
-    regionInput.value = region;
+    geolocationInput.value = geolocation;
     yearInput.value = year;
-    percentageInput.value = percentage;
-    regionInput.focus();
+    accessPercentageInput.value = accessPercentage;
+    geolocationInput.focus();
 }
 
-async function deleteRow(region, year) {
-    if (!confirm(`Delete ${region} (${year})?`)) return;
+async function deleteRow(geolocation, year) {
+    if (!confirm(`Delete ${geolocation} (${year})?`)) return;
 
     try {
-        await fetch(`${API_URL}/${encodeURIComponent(region)}/${year}`, { method: 'DELETE' });
+        await fetch(`${API_URL}/${encodeURIComponent(geolocation)}/${year}`, { method: 'DELETE' });
+        resetPagination();
         loadData();
     } catch (err) {
         alert('Error: ' + err.message);
@@ -211,7 +279,7 @@ cancelBtn.addEventListener('click', resetForm);
 
 function resetForm() {
     dataForm.reset();
-    editOriginalRegion.value = '';
+    editOriginalGeolocation.value = '';
     editOriginalYear.value = '';
     isEditing = false;
     formTitle.textContent = 'Add Data Point';
